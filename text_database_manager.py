@@ -104,6 +104,19 @@ class TextDatabase:
         tables = self.read_line(file, LN_TABLES).strip().split(": ")[1]
         return json.loads(tables)
 
+    def get_table_line_from_meta(self, file: TextIOWrapper, table_name):
+        tables = self.get_tables_from_meta(file)
+        for table in tables:
+            if table[1] == table_name:
+                return table[0]
+        raise ValueError("Table not found")
+
+    def get_table_line_from_list(self, tables, table_name):
+        for table in tables:
+            if table[1] == table_name:
+                return table[0]
+        raise ValueError("Table not found")
+
     def add_table_to_meta(self, file: TextIOWrapper, table_name, line_number):
         tables = self.get_tables_from_meta(file)
         tables.append([line_number, table_name])
@@ -111,11 +124,7 @@ class TextDatabase:
 
     def update_tables_to_meta(self, file: TextIOWrapper, table_name, amount):
         tables = self.get_tables_from_meta(file)
-        table_line = None
-        for table in tables:
-            if table_name == table[1]:
-                table_line = table[0]
-                break
+        table_line = self.get_table_line_from_list(tables, table_name)
 
         if table_line is None:
             raise ValueError("Table not found in metadata")
@@ -147,16 +156,14 @@ class TextDatabase:
             self.update_lines_to_meta(file, 7)
             self.update_updated_to_meta(file)
 
+    def update_table_updated(self, file, table_name):
+        table_line_number = self.get_table_line_from_meta(file, table_name)
+        self.overwrite_line(file, table_line_number + 3, f"updated: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
+        self.update_updated_to_meta(file)
+
     def add_row_to_table(self, table_name, row):
         with open(self.filename, "r+") as file:
-            tables = self.get_tables_from_meta(file)
-            table_line_number = None
-            for line_number, name in tables:
-                if name == table_name:
-                    table_line_number = line_number
-                    break
-            if table_line_number is None:
-                raise ValueError("Table not found")
+            table_line_number = self.get_table_line_from_meta(file, table_name)
 
             rows = int(self.read_line(file, table_line_number + 5).strip().split(": ")[1])
             self.insert_line(file, table_line_number + rows + 6, row)
@@ -164,6 +171,27 @@ class TextDatabase:
             self.update_lines_to_meta(file, 1)
             self.update_tables_to_meta(file, table_name, 1)
             self.update_updated_to_meta(file)
+            self.update_table_updated(file, table_name)
+        
+    def delete_row_from_table(self, table_name, row):
+        with open(self.filename, "r+") as file:
+            table_line_number = self.get_table_line_from_meta(file, table_name)
+
+            rows = int(self.read_line(file, table_line_number + 5).strip().split(": ")[1])
+            deleted_rows = 0
+            i = rows
+            while i > 0:
+                row_number = table_line_number + 5 + i
+                if self.read_line(file, row_number) == row:
+                    self.delete_line(file, row_number)
+                    self.update_lines_to_meta(file, -1)
+                    deleted_rows += 1
+                else:
+                    i -= 1
+            if deleted_rows:
+                self.update_updated_to_meta(file)
+                self.overwrite_line(file, table_line_number + 5, f'rows: {rows - deleted_rows}')
+                self.update_table_updated(file, table_name)
 
     def delete_table(self, table_name):
         with open(self.filename, "r+") as file:
@@ -186,11 +214,10 @@ class TextDatabase:
             self.delete_tables_to_meta(file, table_name)
             self.update_updated_to_meta(file)
 
-
 # Main execution
 def main():
-    # if os.path.exists("_temp.db"):
-    #     os.remove("_temp.db")
+    if os.path.exists("_temp.db"):
+        os.remove("_temp.db")
     file = "_temp.db"
 
     db = TextDatabase(file)
@@ -203,8 +230,15 @@ def main():
     db.add_row_to_table("table 2", "apple")
     db.add_row_to_table("table 2", "oranges")
     db.add_row_to_table("table 3", "banana")
+    db.add_row_to_table("table 1", "temp row")
+    db.add_row_to_table("table 1", "temp row")
+    db.add_row_to_table("table 1", "temp row")
 
     db.delete_table("temp table")
+
+    time.sleep(1)
+
+    db.delete_row_from_table("table 1", "temp row")
 
     with open(file, "r") as f:
         print(f.read())
@@ -212,11 +246,6 @@ def main():
     # if file == "_temp.db":
     #     os.remove(file)
 
-
-'''
-Things to add:
-
-'''
 
 if __name__ == "__main__":
     main()
