@@ -1,7 +1,7 @@
+from io import TextIOWrapper
 import json
 import os
 import time
-from io import TextIOWrapper
 import sys
 
 LN_LINES = 2
@@ -103,12 +103,7 @@ class TextDatabase:
     def get_tables_from_meta(self, file: TextIOWrapper):
         tables = self.read_line(file, LN_TABLES).strip().split(": ")[1]
         return json.loads(tables)
-    
-    def list_tables(self):
-        with open(self.filename, "r") as file:
-            tables = [table[1] for table in self.get_tables_from_meta(file)]
-            return tables
-            
+
     def get_table_line_from_meta(self, file: TextIOWrapper, table_name):
         tables = self.get_tables_from_meta(file)
         for table in tables:
@@ -126,14 +121,6 @@ class TextDatabase:
         tables = self.get_tables_from_meta(file)
         tables.append([line_number, table_name])
         self.overwrite_line(file, LN_TABLES, f"tables: {json.dumps(tables)}")
-    
-    def check_table_exists(self, table_name):
-        with open(self.filename, "r") as file:
-            tables = self.get_tables_from_meta(file)
-            for table in tables:
-                if table[1] == table_name:
-                    return True
-            return False
 
     def update_tables_to_meta(self, file: TextIOWrapper, table_name, amount):
         tables = self.get_tables_from_meta(file)
@@ -153,13 +140,13 @@ class TextDatabase:
         tables = [table for table in tables if table[1] != table_name]
         self.overwrite_line(file, LN_TABLES, f"tables: {json.dumps(tables)}")
 
-    def add_table(self, table_name, columns=[]):
+    def add_table(self, table_name):
         with open(self.filename, "r+") as file:
             content = {
                 'name': table_name,
                 'created': time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                 'updated': time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-                'columns': columns,
+                'columns': [],
                 'rows': 0,
             }
             lines_to_add = ["\nTABLE"] + [f'{key}: {val}' for key, val in content.items()]
@@ -168,7 +155,7 @@ class TextDatabase:
             self.add_table_to_meta(file, table_name, self.get_lines_from_meta(file) + 1)
             self.update_lines_to_meta(file, 7)
             self.update_updated_to_meta(file)
-    
+
     def update_table_updated(self, file, table_name):
         table_line_number = self.get_table_line_from_meta(file, table_name)
         self.overwrite_line(file, table_line_number + 3, f"updated: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
@@ -227,46 +214,50 @@ class TextDatabase:
             self.delete_tables_to_meta(file, table_name)
             self.update_updated_to_meta(file)
 
-    def view_table(self, table_name):
-        with open(self.filename, "r") as file:
-            table_line = self.get_table_line_from_meta(file, table_name)
-            lines = []
-            for i in range(table_line + 6, table_line + 6 + int(self.read_line(file, table_line + 5).strip().split(": ")[1])):
-                lines.append(self.read_line(file, i))
-            return lines
 
-# Main execution
 def main():
-    if os.path.exists("_temp.db"):
-        os.remove("_temp.db")
-    file = "_temp.db"
+    if len(sys.argv) < 2:
+        print("Usage: python script.py <filename>")
+        return
 
-    db = TextDatabase(file)
+    filename = sys.argv[1]
+    db = TextDatabase(filename)
 
-    db.add_table("table 1")
-    db.add_table("temp table")
-    db.add_table("table 2")
-    db.add_table("table 3")
+    while True:
+        command = input("db> ").strip()
+        if command.lower() in ("exit", "quit"):
+            break
+        try:
+            process_command(db, command)
+        except Exception as e:
+            print(f"Error: {e}")
 
-    db.add_row_to_table("table 2", "apple")
-    db.add_row_to_table("table 2", "oranges")
-    db.add_row_to_table("table 3", "banana")
-    db.add_row_to_table("table 1", "temp row")
-    db.add_row_to_table("table 1", "temp row")
-    db.add_row_to_table("table 1", "temp row")
-
-    db.delete_table("temp table")
-
-    time.sleep(1)
-
-    db.delete_row_from_table("table 1", "temp row")
-
-    with open(file, "r") as f:
-        print(f.read())
-
-    # if file == "_temp.db":
-    #     os.remove(file)
-
+def process_command(db, command):
+    if command.startswith("create"):
+        parts = command.split("with columns")
+        table_name = parts[0].split()[1].strip().strip('"')
+        columns = json.loads(parts[1].strip())
+        db.add_table(table_name)
+        for col in columns:
+            db.add_row_to_table(table_name, col)
+    elif command.startswith("view"):
+        table_name = command.split()[1].strip().strip('"')
+        with open(db.filename, "r") as file:
+            table_line_number = db.get_table_line_from_meta(file, table_name)
+            rows = int(db.read_line(file, table_line_number + 5).strip().split(": ")[1])
+            print(f"Table {table_name}:")
+            for i in range(7, 7 + rows):
+                print(db.read_line(file, table_line_number + i))
+    elif command.startswith("insert to"):
+        parts = command.split("row")
+        table_name = parts[0].split()[2].strip().strip('"')
+        row = json.loads(parts[1].strip())
+        db.add_row_to_table(table_name, row)
+    elif command.startswith("delete"):
+        table_name = command.split()[1].strip().strip('"')
+        db.delete_table(table_name)
+    else:
+        print("Unknown command")
 
 if __name__ == "__main__":
     main()
