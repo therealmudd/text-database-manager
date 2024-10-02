@@ -3,6 +3,7 @@ import os
 import time
 from io import TextIOWrapper
 import sys
+import ast
 
 LN_LINES = 2
 LN_CREATED = 3
@@ -230,9 +231,10 @@ class TextDatabase:
     def view_table(self, table_name):
         with open(self.filename, "r") as file:
             table_line = self.get_table_line_from_meta(file, table_name)
-            lines = []
-            for i in range(table_line + 6, table_line + 6 + int(self.read_line(file, table_line + 5).strip().split(": ")[1])):
-                lines.append(self.read_line(file, i))
+            num_rows = int(self.read_line(file, table_line + 5).strip().split(": ")[1])
+            lines = [ast.literal_eval(self.read_line(file, table_line + 4).strip().split(": ")[1])]
+            for i in range(table_line + 6, table_line + 6 + num_rows):
+                lines.append(ast.literal_eval(self.read_line(file, i)))
             return lines
 
 # Main execution
